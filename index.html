@@ -1,0 +1,157 @@
+<html>
+    <head>
+    
+    </head>
+    <body>
+        <div class="settings">
+            <form action="NO!" id="settings">
+                <p><input type="text" id="github_username" placeholder="GitHub Username"/></p>
+                <p><input type="password" id="github_password" placeholder="GitHub Password"/></p>
+                <p><input type="text" id="github_organization" placeholder="GitHub Organization"></p>
+                <p><input type="submit" value="update"></p>
+            </form>
+        </div>
+    
+        <div id="content">
+            
+        </div>
+    
+        <script type="text/javascript" src="jquery-1.6.1.min.js"></script>
+        <script type="text/javascript" src="underscore-min.js"></script>
+        <script type="text/javascript" src="backbone-min.js"></script>
+        <script type="text/javascript" src="base64.js"></script>
+        <script type="text/javascript" src="json2.js"></script>
+        <script type="text/javascript">
+        $(function(){
+            Backbone.Collection.prototype.parse = function( data ) {
+        		if (typeof(data.repositories) !== "undefined") return data.repositories;
+        		return data;
+            };
+            var Repository = Backbone.Model.extend({
+                obj_list: "repositories",
+                initialize: function(){
+                    var repo = this;
+                    this.issues = new IssueList();
+                    this.issues.repo = repo;
+                    this.issues.fetch();
+                }
+            });
+            var RepoList = Backbone.Collection.extend({
+                model: Repository,
+                url: function(){
+                    if ((organization !== null) && (organization !== "null")){
+                        return "https://github.com/api/v2/json/organizations/"+organization+"/repositories"
+                    } else {
+                        return "https://github.com/api/v2/json/repos/show/"+username
+                    }
+                }
+            });
+            var RepoView = Backbone.View.extend({
+                tagName: "li",
+                initialize: function(){
+                    _.bindAll(this, 'render');
+                    
+                },
+                render: function(){
+                    $(this.el).html('<a href="'+this.model.get('url')+'">'+this.model.get('name')+'</a> <span>'+this.model.get('open_issues')+'</span> <strong>' + this.model.issues.my_count() + '</strong>');
+                    return this; // for chainable calls, like .render().el
+                }
+            });
+            var Issue = Backbone.Model.extend({
+                is_mine: function(){
+                    console.log(this.get("assignee"));
+                    if(this.get("assignee")){
+                        return this.get('assignee').login == username;
+                    }
+                    return false;
+                }        
+            });
+            var IssueList = Backbone.Collection.extend({
+                model: Issue,
+                repo: null,
+                url: function(){
+                    if ((organization !== null) && (organization !== "null")){
+                        return "https://api.github.com/repos/"+organization+"/"+this.repo.get('name')+"/issues";
+                    } else {
+                        return "https://api.github.com/repos/"+username+"/"+this.repo.get('name')+"/issues";
+                    }
+                },
+                my_count: function(){
+                    counter = 0;
+                    _(this.models).each(function(issue){
+                        if(issue.is_mine()) counter++;
+                    });
+                    return counter;
+                }
+            });
+            
+            
+            var ListRepos = Backbone.View.extend({
+                el: "#content",
+                initialize: function(){
+                    this.collection = new RepoList();
+                    this.collection.bind('add', this.appendItem);
+                    this.collection.fetch();
+                },
+                render: function(){
+                    $(this.el).append("<ul></ul>");
+                    _(this.collection.models).each(function(item){ // in case collection is not empty
+                        this.appendItem(item);
+                    }, this);
+                },
+                appendItem: function(item){
+                    var itemView = new RepoView({
+                        model: item
+                    });
+                    $('ul', this.el).append(itemView.render().el);
+                }
+            });
+            
+            username = window.localStorage.getItem("username");
+            password = window.localStorage.getItem("password");
+            organization = window.localStorage.getItem("organization");
+            
+            $("#settings").submit(function(e){
+                username = $(this).find("#github_username").val();
+                window.localStorage.setItem("username", username);
+                password = $(this).find("#github_password").val();
+                window.localStorage.setItem("password", password);
+                organization = $(this).find("#github_organization").val()
+                if (organization == ""){
+                    organization = null;
+                }
+                window.localStorage.setItem("organization", organization);
+                
+                $.ajaxSetup({
+                    beforeSend: function(xhr) {
+                        xhr.setRequestHeader("Authorization", "Basic " + Base64.encode(username + ":" + password));
+                    },
+                });
+                e.preventDefault();
+                
+                list_repos = new ListRepos();
+                setTimeout("list_repos.render()", 5000); //ghetoo!
+            });
+        
+            $.ajaxSetup({
+                dataType: "json",
+                isLocal: true,
+                cache: false,
+                url: "https://api.github.com/",
+                type: "GET",
+                beforeSend: function(xhr) {
+                    xhr.setRequestHeader("Authorization", "Basic " + Base64.encode(username + ":" + password));
+                },
+                error: function(data, text, response){
+                  console.error("Api error, three messages following.");
+                  console.error(data);
+                  console.error(text);
+                  console.error(response);
+                }
+            });
+            list_repos = new ListRepos();
+            setTimeout("list_repos.render()", 5000); //ghetoo!
+        });
+        </script>
+    </body>
+</html>
